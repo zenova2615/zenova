@@ -4,6 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/providers/media_provider.dart';
 import '../../../data/models/video_item.dart';
+import 'video_player_screen.dart';
 
 class PlayerHomeScreen extends ConsumerWidget {
   const PlayerHomeScreen({super.key});
@@ -181,7 +182,12 @@ class _VideoTile extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            // TODO: Open player (Milestone 3)
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => VideoPlayerScreen(video: video),
+              ),
+            );
           },
           borderRadius: BorderRadius.circular(AppConstants.borderRadius),
           child: Padding(
