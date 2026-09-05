@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../vault/screens/vault_screen.dart';
 
 class OtherToolsScreen extends StatelessWidget {
   const OtherToolsScreen({super.key});
@@ -27,6 +28,7 @@ class OtherToolsScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
+
             GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -34,16 +36,26 @@ class OtherToolsScreen extends StatelessWidget {
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
               childAspectRatio: 0.95,
-              children: const [
-                _ToolItem(icon: Icons.folder_outlined, label: 'File Manager'),
-                _ToolItem(icon: Icons.compress_rounded, label: 'Compressor'),
-                _ToolItem(icon: Icons.swap_horiz_rounded, label: 'Converter'),
-                _ToolItem(icon: Icons.content_cut_rounded, label: 'Trimmer'),
-                _ToolItem(icon: Icons.audiotrack_rounded, label: 'Audio Extract'),
-                _ToolItem(icon: Icons.subtitles_rounded, label: 'Subtitle'),
-                _ToolItem(icon: Icons.info_outline_rounded, label: 'Media Info'),
-                _ToolItem(icon: Icons.storage_rounded, label: 'Storage'),
-                _ToolItem(icon: Icons.videocam_outlined, label: 'Recorder'),
+              children: [
+                _ToolItem(
+                  icon: Icons.lock_rounded,
+                  label: 'Private Vault',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const VaultScreen()),
+                    );
+                  },
+                ),
+                const _ToolItem(icon: Icons.folder_outlined, label: 'File Manager'),
+                const _ToolItem(icon: Icons.compress_rounded, label: 'Compressor'),
+                const _ToolItem(icon: Icons.swap_horiz_rounded, label: 'Converter'),
+                const _ToolItem(icon: Icons.content_cut_rounded, label: 'Trimmer'),
+                const _ToolItem(icon: Icons.audiotrack_rounded, label: 'Audio Extract'),
+                const _ToolItem(icon: Icons.subtitles_rounded, label: 'Subtitle'),
+                const _ToolItem(icon: Icons.info_outline_rounded, label: 'Media Info'),
+                const _ToolItem(icon: Icons.storage_rounded, label: 'Storage'),
+                const _ToolItem(icon: Icons.videocam_outlined, label: 'Recorder'),
               ],
             ),
           ],
@@ -56,10 +68,12 @@ class OtherToolsScreen extends StatelessWidget {
 class _ToolItem extends StatelessWidget {
   final IconData icon;
   final String label;
+  final VoidCallback? onTap;
 
   const _ToolItem({
     required this.icon,
     required this.label,
+    this.onTap,
   });
 
   @override
@@ -68,7 +82,12 @@ class _ToolItem extends StatelessWidget {
       color: AppColors.card,
       borderRadius: BorderRadius.circular(AppConstants.borderRadius),
       child: InkWell(
-        onTap: () {},
+        onTap: onTap ??
+            () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('$label - Coming soon')),
+              );
+            },
         borderRadius: BorderRadius.circular(AppConstants.borderRadius),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
