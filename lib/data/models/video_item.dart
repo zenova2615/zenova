@@ -5,8 +5,8 @@ class VideoItem extends Equatable {
   final String title;
   final String path;
   final String? thumbnailPath;
-  final int duration; // in seconds
-  final int size; // in bytes
+  final int duration;
+  final int size;
   final DateTime dateAdded;
   final String? folderName;
 
