@@ -6,6 +6,8 @@ import '../features/share/screens/share_screen.dart';
 import '../features/player/screens/player_home_screen.dart';
 import '../features/downloader/screens/downloader_screen.dart';
 import '../features/other_tools/screens/other_tools_screen.dart';
+import '../features/player/screens/video_player_screen.dart';
+import '../data/models/video_item.dart';
 
 class AppRouter {
   AppRouter._();
@@ -17,6 +19,18 @@ class AppRouter {
     navigatorKey: rootNavigatorKey,
     initialLocation: '/player',
     routes: [
+      // Full screen player (outside bottom navigation)
+      GoRoute(
+        path: '/play',
+        name: 'play',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final video = state.extra as VideoItem;
+          return VideoPlayerScreen(video: video);
+        },
+      ),
+
+      // Main shell with bottom navigation
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
           return ShellScreen(navigationShell: navigationShell);
