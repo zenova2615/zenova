@@ -23,7 +23,7 @@ class DownloadService {
     required String url,
   }) async {
     final dir = await getDownloadDirectory();
-    final fileName = '\( {DateTime.now().millisecondsSinceEpoch}_ \){title.replaceAll(RegExp(r'[^\w\s-]'), '')}';
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}_${title.replaceAll(RegExp(r'[^\w\s-]'), '')}';
     final savePath = p.join(dir, '$fileName.mp4');
 
     final item = DownloadItem(
