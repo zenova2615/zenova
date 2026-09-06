@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/providers/media_provider.dart';
@@ -188,12 +189,7 @@ class _VideoTile extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => VideoPlayerScreen(video: video),
-              ),
-            );
+            context.push('/play', extra: video);
           },
           borderRadius: BorderRadius.circular(AppConstants.borderRadius),
           child: Padding(
