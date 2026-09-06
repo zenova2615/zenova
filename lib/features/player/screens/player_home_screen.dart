@@ -4,6 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/providers/media_provider.dart';
 import '../../../data/models/video_item.dart';
+import '../../settings/screens/settings_screen.dart';
 import 'video_player_screen.dart';
 
 class PlayerHomeScreen extends ConsumerWidget {
@@ -29,9 +30,14 @@ class PlayerHomeScreen extends ConsumerWidget {
             tooltip: 'Refresh',
           ),
           IconButton(
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
             icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Player Settings',
+            tooltip: 'Settings',
           ),
         ],
       ),
