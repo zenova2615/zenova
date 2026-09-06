@@ -6,25 +6,21 @@ import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:screen_brightness/screen_brightness.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/video_item.dart';
+import '../../../core/providers/media_provider.dart';
 
-class VideoPlayerScreen extends StatefulWidget {
+class VideoPlayerScreen extends ConsumerStatefulWidget {
   final VideoItem video;
-  final List<VideoItem>? queue;
 
-  const VideoPlayerScreen({
-    super.key,
-    required this.video,
-    this.queue,
-  });
+  const VideoPlayerScreen({super.key, required this.video});
 
   @override
-  State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
+  ConsumerState<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
-class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+class _VideoPlayerScreenState extends ConsumerState<VideoPlayerScreen> {
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _showControls = true;
@@ -32,17 +28,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _isPlaying = false;
   double _currentSpeed = 1.0;
   Timer? _hideTimer;
+  bool _isLandscape = false;
 
-  // Gesture
+  // Gesture indicators
   double _brightness = 0.5;
   double _volume = 0.5;
   bool _showBrightness = false;
   bool _showVolume = false;
 
+  late VideoItem _currentVideo;
+
   @override
   void initState() {
     super.initState();
-    _initPlayer();
+    _currentVideo = widget.video;
+    _initPlayer(_currentVideo);
     _initBrightnessVolume();
   }
 
@@ -53,19 +53,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     } catch (_) {}
   }
 
-  Future<void> _initPlayer() async {
+  Future<void> _initPlayer(VideoItem video) async {
     try {
-      _controller = VideoPlayerController.file(File(widget.video.path));
+      if (_isInitialized) {
+        await _controller.pause();
+        await _controller.dispose();
+      }
+
+      setState(() {
+        _isInitialized = false;
+        _currentVideo = video;
+      });
+
+      _controller = VideoPlayerController.file(File(video.path));
       await _controller.initialize();
       await _controller.play();
       WakelockPlus.enable();
-
-      // Landscape recommended
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-        DeviceOrientation.portraitUp,
-      ]);
 
       setState(() {
         _isInitialized = true;
@@ -73,7 +76,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       });
       _startHideTimer();
     } catch (e) {
-      debugPrint('Player init error: $e');
+      debugPrint('Player error: $e');
     }
   }
 
@@ -120,8 +123,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _startHideTimer();
   }
 
-  Future<void> _takeScreenshot() async {
-    // Placeholder - will save frame later
+  void _takeScreenshot() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('✓ Screenshot Saved'),
@@ -136,9 +138,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final m = d.inMinutes.remainder(60);
     final s = d.inSeconds.remainder(60);
     if (h > 0) {
-      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+      return '\( {h.toString().padLeft(2, '0')}: \){m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
     }
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    return '\( {m.toString().padLeft(2, '0')}: \){s.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -146,12 +148,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     _hideTimer?.cancel();
     _controller.dispose();
     WakelockPlus.disable();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final orientation = MediaQuery.of(context).orientation;
+    _isLandscape = orientation == Orientation.landscape;
+
+    // Immersive mode in landscape
+    if (_isLandscape) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
@@ -166,12 +181,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           }
         },
         onVerticalDragUpdate: (details) async {
-          if (_isLocked) return;
+          if (_isLocked || _isLandscape) return;
           final screenWidth = MediaQuery.of(context).size.width;
           final delta = -details.delta.dy / 300;
 
           if (details.localPosition.dx < screenWidth / 2) {
-            // Brightness
             _brightness = (_brightness + delta).clamp(0.0, 1.0);
             await ScreenBrightness().setScreenBrightness(_brightness);
             setState(() {
@@ -179,7 +193,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               _showVolume = false;
             });
           } else {
-            // Volume
             _volume = (_volume + delta).clamp(0.0, 1.0);
             await FlutterVolumeController.setVolume(_volume);
             setState(() {
@@ -199,7 +212,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           });
         },
         child: Stack(
-          alignment: Alignment.center,
           children: [
             // Video
             if (_isInitialized)
@@ -212,16 +224,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             else
               const Center(child: CircularProgressIndicator(color: AppColors.primary)),
 
-            // Brightness Indicator
+            // Brightness / Volume Indicator
             if (_showBrightness)
               _buildIndicator(Icons.brightness_6_rounded, _brightness),
-
-            // Volume Indicator
             if (_showVolume)
               _buildIndicator(Icons.volume_up_rounded, _volume),
 
-            // Controls
-            if (_showControls && _isInitialized) _buildControls(),
+            // Controls + Queue (only in portrait or when controls shown)
+            if (_showControls && _isInitialized)
+              _isLandscape ? _buildLandscapeControls() : _buildPortraitUI(),
           ],
         ),
       ),
@@ -229,92 +240,260 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   Widget _buildIndicator(IconData icon, double value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 22),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 100,
-            child: LinearProgressIndicator(
-              value: value,
-              backgroundColor: Colors.white24,
-              color: AppColors.primary,
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.black54,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 22),
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 100,
+              child: LinearProgressIndicator(
+                value: value,
+                backgroundColor: Colors.white24,
+                color: AppColors.primary,
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==================== PORTRAIT UI ====================
+  Widget _buildPortraitUI() {
+    final videosAsync = ref.watch(videosProvider);
+
+    return Column(
+      children: [
+        // Top Bar
+        SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                ),
+                Expanded(
+                  child: Text(
+                    _currentVideo.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => setState(() => _isLocked = !_isLocked),
+                  icon: Icon(
+                    _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Video area takes remaining space above controls
+        const Spacer(),
+
+        // Bottom Controls
+        if (!_isLocked) _buildBottomControls(),
+
+        // Up Next Queue
+        if (!_isLocked)
+          Container(
+            color: const Color(0xFF0A0A0A),
+            height: 280,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.playlist_play_rounded, color: Colors.white70, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Up Next (In This Folder)',
+                        style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                      const Spacer(),
+                      videosAsync.when(
+                        data: (videos) => Text(
+                          '${videos.length} Videos',
+                          style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        ),
+                        loading: () => const SizedBox(),
+                        error: (_, __) => const SizedBox(),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: videosAsync.when(
+                    data: (videos) {
+                      if (videos.isEmpty) {
+                        return const Center(child: Text('No videos', style: TextStyle(color: Colors.white38)));
+                      }
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        itemCount: videos.length,
+                        itemBuilder: (context, index) {
+                          final video = videos[index];
+                          final isPlaying = video.id == _currentVideo.id;
+                          return _QueueItem(
+                            video: video,
+                            isPlaying: isPlaying,
+                            index: index + 1,
+                            onTap: () {
+                              if (!isPlaying) _initPlayer(video);
+                            },
+                          );
+                        },
+                      );
+                    },
+                    loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                    error: (_, __) => const Center(child: Text('Error loading videos', style: TextStyle(color: Colors.white38))),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildBottomControls() {
+    return Container(
+      color: Colors.black54,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Column(
+        children: [
+          VideoProgressIndicator(
+            _controller,
+            allowScrubbing: true,
+            colors: const VideoProgressColors(
+              playedColor: AppColors.primary,
+              bufferedColor: Colors.white30,
+              backgroundColor: Colors.white12,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Text(
+                _formatDuration(_controller.value.position),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+              const Spacer(),
+              Text(
+                _formatDuration(_controller.value.duration),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                onPressed: () => _seekRelative(-10),
+                icon: const Icon(Icons.replay_10_rounded, color: Colors.white, size: 28),
+              ),
+              IconButton(
+                onPressed: _togglePlay,
+                icon: Icon(
+                  _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 36,
+                ),
+              ),
+              IconButton(
+                onPressed: () => _seekRelative(10),
+                icon: const Icon(Icons.forward_10_rounded, color: Colors.white, size: 28),
+              ),
+              GestureDetector(
+                onTap: _takeScreenshot,
+                onLongPress: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Screen Recording - Coming soon')),
+                  );
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Icon(Icons.camera_alt_outlined, color: Colors.white, size: 26),
+                ),
+              ),
+              TextButton(
+                onPressed: _changeSpeed,
+                child: Text(
+                  '${_currentSpeed}x',
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildControls() {
+  // ==================== LANDSCAPE CONTROLS ====================
+  Widget _buildLandscapeControls() {
     return Container(
       color: Colors.black38,
       child: Column(
         children: [
-          // Top Bar
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                ),
+                Expanded(
+                  child: Text(
+                    _currentVideo.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
                   ),
-                  Expanded(
-                    child: Text(
-                      widget.video.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
-                    ),
+                ),
+                IconButton(
+                  onPressed: () => setState(() => _isLocked = !_isLocked),
+                  icon: Icon(
+                    _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                    color: Colors.white,
                   ),
-                  TextButton(
-                    onPressed: _changeSpeed,
-                    child: Text(
-                      '${_currentSpeed}x',
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => setState(() => _isLocked = !_isLocked),
-                    icon: Icon(
-                      _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-
           const Spacer(),
-
-          // Center Play
           if (!_isLocked)
             IconButton(
               onPressed: _togglePlay,
-              iconSize: 68,
+              iconSize: 64,
               icon: Icon(
                 _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded,
                 color: Colors.white,
               ),
             ),
-
           const Spacer(),
-
-          // Bottom
           if (!_isLocked)
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   children: [
                     VideoProgressIndicator(
@@ -326,48 +505,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                         backgroundColor: Colors.white12,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          _formatDuration(_controller.value.position),
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                        const Spacer(),
-                        Text(
-                          _formatDuration(_controller.value.duration),
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         IconButton(
                           onPressed: () => _seekRelative(-10),
-                          icon: const Icon(Icons.replay_10_rounded, color: Colors.white, size: 28),
+                          icon: const Icon(Icons.replay_10_rounded, color: Colors.white),
                         ),
                         IconButton(
                           onPressed: _togglePlay,
                           icon: Icon(
                             _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                             color: Colors.white,
-                            size: 34,
+                            size: 32,
                           ),
                         ),
                         IconButton(
                           onPressed: () => _seekRelative(10),
-                          icon: const Icon(Icons.forward_10_rounded, color: Colors.white, size: 28),
+                          icon: const Icon(Icons.forward_10_rounded, color: Colors.white),
                         ),
-                        GestureDetector(
-                          onTap: _takeScreenshot,
-                          onLongPress: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Screen Recording coming soon')),
-                            );
-                          },
-                          child: const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 26),
+                        TextButton(
+                          onPressed: _changeSpeed,
+                          child: Text('${_currentSpeed}x', style: const TextStyle(color: Colors.white)),
                         ),
                       ],
                     ),
@@ -380,3 +540,63 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     );
   }
 }
+
+// ==================== QUEUE ITEM ====================
+class _QueueItem extends StatelessWidget {
+  final VideoItem video;
+  final bool isPlaying;
+  final int index;
+  final VoidCallback onTap;
+
+  const _QueueItem({
+    required this.video,
+    required this.isPlaying,
+    required this.index,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: isPlaying ? AppColors.primary.withValues(alpha: 0.12) : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(
+            children: [
+              // Thumbnail placeholder
+              Container(
+                width: 110,
+                height: 62,
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(6),
+                  border: isPlaying ? Border.all(color: AppColors.primary, width: 2) : null,
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(Icons.play_circle_fill_rounded, color: Colors.white38, size: 28),
+                    Positioned(
+                      left: 4,
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          index.toString().padLeft(2, '0'),
+                          style: const TextStyle(color: Colors.white, fontSize: 10),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAli
